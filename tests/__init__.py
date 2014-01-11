@@ -72,16 +72,17 @@ def db_for_dialect(name):
         _engs[name] = eng
         return eng
 
-@decorator
-def requires_07(fn, *arg, **kw):
-    if not util.sqla_07:
-        raise SkipTest("SQLAlchemy 0.7 required")
-    return fn(*arg, **kw)
 
 @decorator
 def requires_08(fn, *arg, **kw):
     if not util.sqla_08:
         raise SkipTest("SQLAlchemy 0.8.0b2 or greater required")
+    return fn(*arg, **kw)
+
+@decorator
+def requires_09(fn, *arg, **kw):
+    if not util.sqla_09:
+        raise SkipTest("SQLAlchemy 0.9 or greater required")
     return fn(*arg, **kw)
 
 _dialects = {}
@@ -302,7 +303,7 @@ def _testing_config():
     return Config(os.path.join(staging_directory, 'test_alembic.ini'))
 
 
-def staging_env(create=True, template="generic"):
+def staging_env(create=True, template="generic", sourceless=False):
     from alembic import command, script
     cfg = _testing_config()
     if create:
@@ -310,6 +311,19 @@ def staging_env(create=True, template="generic"):
         if os.path.exists(path):
             shutil.rmtree(path)
         command.init(cfg, path)
+        if sourceless:
+            try:
+                # do an import so that a .pyc/.pyo is generated.
+                util.load_python_file(path, 'env.py')
+            except AttributeError:
+                # we don't have the migration context set up yet
+                # so running the .env py throws this exception.
+                # theoretically we could be using py_compiler here to
+                # generate .pyc/.pyo without importing but not really
+                # worth it.
+                pass
+            make_sourceless(os.path.join(path, "env.py"))
+
     sc = script.ScriptDirectory.from_config(cfg)
     return sc
 
@@ -317,7 +331,7 @@ def clear_staging_env():
     shutil.rmtree(staging_directory, True)
 
 
-def write_script(scriptdir, rev_id, content, encoding='ascii'):
+def write_script(scriptdir, rev_id, content, encoding='ascii', sourceless=False):
     old = scriptdir._revision_map[rev_id]
     path = old.path
 
@@ -337,6 +351,22 @@ def write_script(scriptdir, rev_id, content, encoding='ascii'):
     scriptdir._revision_map[script.revision] = script
     script.nextrev = old.nextrev
 
+    if sourceless:
+        make_sourceless(path)
+
+def make_sourceless(path):
+    # note that if -O is set, you'd see pyo files here,
+    # the pyc util function looks at sys.flags.optimize to handle this
+    pyc_path = util.pyc_file_from_path(path)
+    assert os.access(pyc_path, os.F_OK)
+
+    # look for a non-pep3147 path here.
+    # if not present, need to copy from __pycache__
+    simple_pyc_path = util.simple_pyc_file_from_path(path)
+
+    if not os.access(simple_pyc_path, os.F_OK):
+        shutil.copyfile(pyc_path, simple_pyc_path)
+    os.unlink(path)
 
 def three_rev_fixture(cfg):
     a = util.rev_id()

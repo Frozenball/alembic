@@ -2,6 +2,107 @@
 ==========
 Changelog
 ==========
+.. changelog::
+    :version: 0.6.3
+
+    .. change::
+      :tags: feature
+      :tickets: 163
+
+     The :class:`.ScriptDirectory` system that loads migration files
+     from a  ``versions/`` directory now supports so-called
+     "sourceless" operation,  where the ``.py`` files are not present
+     and instead ``.pyc`` or ``.pyo`` files are directly present where
+     the ``.py`` files should be.  Note that while Python 3.3 has a
+     new system of locating ``.pyc``/``.pyo`` files within a directory
+     called ``__pycache__`` (e.g. PEP-3147), PEP-3147 maintains
+     support for the "source-less imports" use case, where the
+     ``.pyc``/``.pyo`` are in present in the "old" location, e.g. next
+     to the ``.py`` file; this is the usage that's supported even when
+     running Python3.3.
+
+
+.. changelog::
+    :version: 0.6.2
+    :released: Fri Dec 27 2013
+
+    .. change::
+      :tags: bug
+
+      Autogenerate for ``op.create_table()`` will not include a
+      ``PrimaryKeyConstraint()`` that has no columns.
+
+    .. change::
+      :tags: bug
+
+      Fixed bug in the not-internally-used :meth:`.ScriptDirectory.get_base`
+      method which would fail if called on an empty versions directory.
+
+    .. change::
+      :tags: bug
+      :tickets: 157
+
+      An almost-rewrite of the new unique constraint/index autogenerate
+      detection, to accommodate a variety of issues.  The emphasis is on
+      not generating false positives for those cases where no net change
+      is present, as these errors are the ones that impact all autogenerate
+      runs:
+
+        * Fixed an issue with unique constraint autogenerate detection where
+          a named ``UniqueConstraint`` on both sides with column changes would
+          render with the "add" operation before the "drop", requiring the
+          user to reverse the order manually.
+
+        * Corrected for MySQL's apparent addition of an implicit index
+          for a foreign key column, so that it doesn't show up as "removed".
+          This required that the index/constraint autogen system query the
+          dialect-specific implementation for special exceptions.
+
+        * reworked the "dedupe" logic to accommodate MySQL's bi-directional
+          duplication of unique indexes as unique constraints, and unique
+          constraints as unique indexes.  Postgresql's slightly different
+          logic of duplicating unique constraints into unique indexes
+          continues to be accommodated as well.  Note that a unique index
+          or unique constraint removal on a backend that duplicates these may
+          show up as a distinct "remove_constraint()" / "remove_index()" pair,
+          which may need to be corrected in the post-autogenerate if multiple
+          backends are being supported.
+
+        * added another dialect-specific exception to the SQLite backend
+          when dealing with unnamed unique constraints, as the backend can't
+          currently report on constraints that were made with this technique,
+          hence they'd come out as "added" on every run.
+
+        * the ``op.create_table()`` directive will be auto-generated with
+          the ``UniqueConstraint`` objects inline, but will not double them
+          up with a separate ``create_unique_constraint()`` call, which may
+          have been occurring.  Indexes still get rendered as distinct
+          ``op.create_index()`` calls even when the corresponding table was
+          created in the same script.
+
+        * the inline ``UniqueConstraint`` within ``op.create_table()`` includes
+          all the options like ``deferrable``, ``initially``, etc.  Previously
+          these weren't rendering.
+
+    .. change::
+      :tags: feature, mssql
+
+      Added new argument ``mssql_drop_foreign_key`` to
+      :meth:`.Operations.drop_column`.  Like ``mssql_drop_default``
+      and ``mssql_drop_check``, will do an inline lookup for a
+      single foreign key which applies to this column, and drop it.
+      For a column with more than one FK, you'd still need to explicitly
+      use :meth:`.Operations.drop_constraint` given the name,
+      even though only MSSQL has this limitation in the first place.
+
+    .. change::
+      :tags: bug, mssql
+      :pullreq: bitbucket:13
+
+      The MSSQL backend will add the batch separator (e.g. ``"GO"``)
+      in ``--sql`` mode after the final ``COMMIT`` statement, to ensure
+      that statement is also processed in batch mode.  Courtesy
+      Derek Harland.
 
 .. changelog::
     :version: 0.6.1
